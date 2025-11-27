@@ -2,7 +2,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Quote } from "../types";
 import { getRandomFallbackQuotes } from "../data/quotes";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 const MODEL_NAME = 'gemini-2.5-flash';
 
 const TOPICS = [
@@ -13,7 +12,7 @@ const TOPICS = [
 ];
 
 export const fetchMixedQuotes = async (): Promise<Quote[]> => {
-  // Randomly select 2 topics to mix in this batch to keep it diverse but focused
+  // Randomly select 2 topics to mix in this batch
   const shuffledTopics = [...TOPICS].sort(() => 0.5 - Math.random()).slice(0, 2);
   const topicsStr = shuffledTopics.join("、");
 
@@ -25,6 +24,17 @@ export const fetchMixedQuotes = async (): Promise<Quote[]> => {
   4. 确保语录内容精辟、有深度。`;
 
   try {
+    // CRITICAL FIX: Initialize AI inside the function with a try-catch block.
+    // This prevents the app from crashing on startup if process.env.API_KEY is missing.
+    const apiKey = process.env.API_KEY;
+    
+    if (!apiKey) {
+      console.warn("No API_KEY found, switching to offline mode.");
+      throw new Error("Missing API Key");
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    
     const response = await ai.models.generateContent({
       model: MODEL_NAME,
       contents: prompt,
@@ -52,8 +62,10 @@ export const fetchMixedQuotes = async (): Promise<Quote[]> => {
     return parsedData;
 
   } catch (error) {
-    console.error("API Error (using fallback data):", error);
-    // Return a random set from our local database to ensure the app works offline or in restricted regions
+    console.log("Network/API Error, using fallback data.");
+    // Return a random set from our local database to ensure the app works offline
+    // Wait a short delay to simulate network request so user sees the loading spinner briefly
+    await new Promise(resolve => setTimeout(resolve, 800));
     return getRandomFallbackQuotes(10);
   }
 };

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Quote } from './types';
 import { fetchMixedQuotes } from './services/geminiService';
 import QuoteSlide from './components/QuoteDisplay';
+import { CUSTOM_QUOTES } from './data/customQuotes';
 
 const App: React.FC = () => {
   const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -25,10 +26,25 @@ const App: React.FC = () => {
     }
 
     try {
-      const newQuotes = await fetchMixedQuotes();
+      // 1. Load custom quotes first (offline priority)
+      // Shuffle custom quotes
+      const shuffledCustom = [...CUSTOM_QUOTES].sort(() => 0.5 - Math.random());
+      
+      // 2. Fetch from API (or fallback)
+      const newNetworkQuotes = await fetchMixedQuotes();
+      
+      // 3. Merge: Custom quotes first, then network quotes
+      // If it's infinite scroll (not refresh), just append network quotes
+      // If it's refresh, show custom + network
       
       setQuotes(prev => {
-        const updated = isRefresh ? newQuotes : [...prev, ...newQuotes];
+        let updated: Quote[];
+        if (isRefresh) {
+           updated = [...shuffledCustom, ...newNetworkQuotes];
+        } else {
+           updated = [...prev, ...newNetworkQuotes];
+        }
+        
         // Cache the updated list for today
         try {
           localStorage.setItem(getTodayKey(), JSON.stringify(updated));
@@ -118,12 +134,12 @@ const App: React.FC = () => {
         </button>
       </div>
 
-      {/* Loading Indicator (Initial) */}
+      {/* Loading Indicator (Initial) - Matches index.html style */}
       {loading && quotes.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center z-50 bg-[#fdfbf7]">
+        <div className="absolute inset-0 flex items-center justify-center z-50 bg-[#0f172a] text-white">
            <div className="flex flex-col items-center space-y-4">
-             <div className="w-10 h-10 border-4 border-gray-200 border-t-rose-500 rounded-full animate-spin"></div>
-             <p className="text-gray-400 font-serif text-xs tracking-widest">每日语录更新中...</p>
+             <div className="w-10 h-10 border-4 border-slate-700 border-t-white rounded-full animate-spin"></div>
+             <p className="font-serif text-sm tracking-widest opacity-80">智语加载中...</p>
            </div>
         </div>
       )}
