@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Quote } from '../types';
 
 interface QuoteSlideProps {
@@ -9,37 +9,32 @@ interface QuoteSlideProps {
 // 定义一组“偏灰色”的暗色主题配置
 // 包含背景渐变(bg)、纹理类型(pattern)、文字颜色(text)等
 const THEMES = [
-  // 1. Slate (Cool Grey) - 冷峻
   {
-    bg: "bg-gradient-to-b from-slate-800 to-slate-900",
+    bg: "bg-gradient-to-b from-slate-800/50 to-slate-900/50",
     text: "text-slate-100",
     subtext: "text-slate-400",
     accent: "bg-slate-600",
   },
-  // 2. Zinc (Metal Grey) - 坚毅
   {
-    bg: "bg-gradient-to-b from-zinc-800 to-zinc-950",
+    bg: "bg-gradient-to-b from-zinc-800/50 to-zinc-950/50",
     text: "text-zinc-100",
     subtext: "text-zinc-400",
     accent: "bg-zinc-600",
   },
-  // 3. Stone (Warm Grey) - 厚重
   {
-    bg: "bg-gradient-to-b from-stone-800 to-stone-950",
+    bg: "bg-gradient-to-b from-stone-800/50 to-stone-950/50",
     text: "text-stone-100",
     subtext: "text-stone-400",
     accent: "bg-stone-600",
   },
-  // 4. Neutral (Pure Grey) - 中正
   {
-    bg: "bg-gradient-to-b from-neutral-800 to-neutral-950",
+    bg: "bg-gradient-to-b from-neutral-800/50 to-neutral-950/50",
     text: "text-neutral-100",
     subtext: "text-neutral-400",
     accent: "bg-neutral-600",
   },
-  // 5. Gray (Deep Blue Grey) - 深邃
   {
-    bg: "bg-gradient-to-b from-gray-800 to-gray-900",
+    bg: "bg-gradient-to-b from-gray-800/50 to-gray-900/50",
     text: "text-gray-100",
     subtext: "text-gray-400",
     accent: "bg-gray-600",
@@ -48,6 +43,15 @@ const THEMES = [
 
 const QuoteSlide: React.FC<QuoteSlideProps> = ({ quote, index }) => {
   const theme = THEMES[index % THEMES.length];
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    const text = `“${quote.content}” —— ${quote.author} ${quote.source ? `· 《${quote.source}》` : ''}`;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
   
   return (
     <div className={`w-full h-full flex-shrink-0 snap-center flex flex-col items-center justify-center p-8 relative overflow-hidden transition-colors duration-700 ${theme.bg}`}>
@@ -74,7 +78,7 @@ const QuoteSlide: React.FC<QuoteSlideProps> = ({ quote, index }) => {
         </h1>
         
         {/* Author Divider - Right Aligned, Single Line */}
-        <div className="w-full mt-12 flex justify-end">
+        <div className="w-full mt-12 flex items-center justify-end space-x-3">
            <div className={`text-lg font-serif tracking-widest opacity-90 ${theme.text}`}>
               <span>{quote.author}</span>
               {quote.source && (
@@ -84,6 +88,23 @@ const QuoteSlide: React.FC<QuoteSlideProps> = ({ quote, index }) => {
                 </>
               )}
            </div>
+           
+           {/* Copy Button */}
+           <button 
+             onClick={handleCopy}
+             className={`p-2 rounded-full transition-all duration-300 ${copied ? 'bg-white text-slate-900' : 'text-white/30 hover:text-white hover:bg-white/10'}`}
+             title="复制语录"
+           >
+             {copied ? (
+               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                 <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+               </svg>
+             ) : (
+               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
+               </svg>
+             )}
+           </button>
         </div>
       </div>
       

@@ -1,10 +1,48 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Component, ErrorInfo } from 'react';
 import { Quote } from './types';
 import { fetchMixedQuotes } from './services/geminiService';
 import QuoteSlide from './components/QuoteDisplay';
 import { CUSTOM_QUOTES } from './data/customQuotes';
 
-const App: React.FC = () => {
+// Error Boundary Component to catch crashes
+class ErrorBoundary extends Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
+  constructor(props: {children: React.ReactNode}) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-900 text-white p-6 text-center">
+          <h2 className="text-xl font-serif mb-4">出了点小问题</h2>
+          <p className="text-slate-400 mb-6 text-sm">无法加载智语 ({this.state.error?.message})</p>
+          <button 
+            onClick={() => {
+              localStorage.clear();
+              window.location.reload();
+            }}
+            className="px-6 py-2 bg-white/10 rounded-full border border-white/20 active:scale-95"
+          >
+            重置并刷新
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+const QuoteApp: React.FC = () => {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -20,41 +58,45 @@ const App: React.FC = () => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
     
-    // Only show full screen loading on first load or refresh
     if (isRefresh) {
       setLoading(true);
     }
 
     try {
       // 1. Load custom quotes first (offline priority)
-      // Shuffle custom quotes
       const shuffledCustom = [...CUSTOM_QUOTES].sort(() => 0.5 - Math.random());
       
-      // 2. Fetch from API (or fallback)
-      const newNetworkQuotes = await fetchMixedQuotes();
-      
-      // 3. Merge: Custom quotes first, then network quotes
-      // If it's infinite scroll (not refresh), just append network quotes
-      // If it's refresh, show custom + network
+      // 2. Try fetch from API, but safe fail to empty array if error
+      let newNetworkQuotes: Quote[] = [];
+      try {
+         newNetworkQuotes = await fetchMixedQuotes();
+      } catch (e) {
+         console.warn("Fetch failed, using only local", e);
+         // If fetch fails, we just use custom quotes, fetchMixedQuotes usually handles fallback 
+         // but this is an extra safety layer
+      }
       
       setQuotes(prev => {
         let updated: Quote[];
         if (isRefresh) {
+           // On refresh, if we have network quotes, use them. If not, ensure we at least show custom quotes.
+           // If network quotes are just the fallback static ones, we mix them.
            updated = [...shuffledCustom, ...newNetworkQuotes];
+           // Remove duplicates based on content
+           updated = updated.filter((v,i,a)=>a.findIndex(t=>(t.content===v.content))===i);
         } else {
            updated = [...prev, ...newNetworkQuotes];
         }
         
-        // Cache the updated list for today
         try {
           localStorage.setItem(getTodayKey(), JSON.stringify(updated));
         } catch (e) {
-          console.warn("Storage full or unavailable");
+          console.warn("Storage full");
         }
         return updated;
       });
     } catch (e) {
-      console.error(e);
+      console.error("Critical load error", e);
     } finally {
       fetchingRef.current = false;
       setLoading(false);
@@ -64,7 +106,10 @@ const App: React.FC = () => {
   // Initial load logic
   useEffect(() => {
     const key = getTodayKey();
-    const stored = localStorage.getItem(key);
+    let stored = null;
+    try {
+      stored = localStorage.getItem(key);
+    } catch(e) { /* ignore */ }
     
     if (stored) {
       try {
@@ -79,13 +124,15 @@ const App: React.FC = () => {
         loadQuotes(true);
       }
     } else {
-      // Clear old keys to save space (optional cleanup)
-      for(let i=0; i<localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if(k && k.startsWith('daily-quotes-') && k !== key) {
-          localStorage.removeItem(k);
+      // Clear old keys
+      try {
+        for(let i=0; i<localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if(k && k.startsWith('daily-quotes-') && k !== key) {
+            localStorage.removeItem(k);
+          }
         }
-      }
+      } catch(e) { /* ignore */ }
       loadQuotes(true);
     }
   }, [loadQuotes]);
@@ -93,16 +140,13 @@ const App: React.FC = () => {
   // Handle infinite scroll
   const handleScroll = () => {
     if (!containerRef.current) return;
-    
     const { scrollLeft, scrollWidth, clientWidth } = containerRef.current;
-    // If we are close to the end (within 1.5 screens width), load more
     if (scrollWidth - (scrollLeft + clientWidth) < clientWidth * 1.5) {
       loadQuotes(false);
     }
   };
 
   const handleRefresh = () => {
-    // Scroll back to start
     if (containerRef.current) {
       containerRef.current.scrollTo({ left: 0, behavior: 'instant' });
     }
@@ -114,14 +158,12 @@ const App: React.FC = () => {
       
       {/* Header / Brand */}
       <div className="absolute top-0 left-0 right-0 z-20 p-6 flex justify-between items-start pointer-events-none">
-        {/* Logo - Updated for better visibility on color backgrounds */}
         <div className="mix-blend-overlay opacity-80">
            <div className="w-10 h-10 border-2 border-white/50 rounded-lg flex items-center justify-center">
               <span className="font-serif font-bold text-white text-xl">智</span>
            </div>
         </div>
         
-        {/* Refresh Button */}
         <button 
           onClick={handleRefresh}
           className="pointer-events-auto p-2 bg-white/20 backdrop-blur-md rounded-full shadow-sm text-white hover:bg-white/30 active:scale-95 transition-all border border-white/30"
@@ -134,7 +176,7 @@ const App: React.FC = () => {
         </button>
       </div>
 
-      {/* Loading Indicator (Initial) - Matches index.html style */}
+      {/* Loading Indicator */}
       {loading && quotes.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center z-50 bg-[#0f172a] text-white">
            <div className="flex flex-col items-center space-y-4">
@@ -152,10 +194,10 @@ const App: React.FC = () => {
         style={{ scrollBehavior: 'smooth' }}
       >
         {quotes.map((quote, index) => (
-          <QuoteSlide key={`${index}-${quote.author}`} quote={quote} index={index} />
+          <QuoteSlide key={`${index}-${quote.author}-${quote.content.substring(0,5)}`} quote={quote} index={index} />
         ))}
         
-        {/* Loading placeholder at the end of the list */}
+        {/* Loading placeholder at the end */}
         {quotes.length > 0 && (
           <div className="w-full h-full flex-shrink-0 snap-center flex items-center justify-center bg-transparent">
              <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
@@ -169,6 +211,15 @@ const App: React.FC = () => {
       </div>
 
     </div>
+  );
+};
+
+// Main App Component wrapper with Error Boundary
+const App: React.FC = () => {
+  return (
+    <ErrorBoundary>
+      <QuoteApp />
+    </ErrorBoundary>
   );
 };
 
